@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perp Scanner</title>
+<style>
+  :root {
+    --bg:#0d0f14; --surface:#13161e; --surface2:#1a1e28; --border:#232736;
+    --accent:#4f8ef7; --accent2:#a78bfa; --green:#22c55e; --red:#ef4444;
+    --text:#e2e8f0; --muted:#64748b; --tag:#1e2435;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;font-size:13px;min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+  .logo{font-size:15px;font-weight:700;letter-spacing:.04em;color:var(--accent)}
+  .logo span{color:var(--text)}
+  .hr{display:flex;align-items:center;gap:10px}
+  .upd{color:var(--muted);font-size:11px}
+  .btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;transition:all .15s}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btnp{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btnp:hover{opacity:.85;color:#fff}
+  .controls{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .cl{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
+  .sep{width:1px;height:24px;background:var(--border);flex-shrink:0}
+  .sw{position:relative}
+  .sw input{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:6px 10px 6px 28px;border-radius:6px;font-size:12px;width:150px;outline:none;transition:border .15s}
+  .sw input:focus{border-color:var(--accent)}
+  .si{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:12px}
+  .tg{display:flex;gap:5px;flex-wrap:wrap}
+  .t{background:var(--tag);border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:20px;cursor:pointer;font-size:11px;font-weight:500;transition:all .15s;user-select:none}
+  .t.on{background:#1e3a5f;border-color:var(--accent);color:var(--accent)}
+  .t.iv{background:#2a1f4f;border-color:var(--accent2);color:var(--accent2)}
+  .sbar{display:flex;gap:20px;padding:8px 20px;background:var(--surface);border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .sbar span{color:var(--text);font-weight:600}
+  .tw{overflow-x:auto;padding:16px 20px}
+  table{width:100%;border-collapse:collapse;min-width:500px}
+  thead tr.grp th{padding:6px 12px 2px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:none;text-align:center;cursor:default}
+  thead tr.grp th.g-oi{color:var(--accent);border-top:2px solid var(--accent)}
+  thead tr.grp th.g-lsr{color:var(--accent2);border-top:2px solid var(--accent2)}
+  thead tr.sub th{padding:4px 12px 8px;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;text-align:right}
+  thead tr.sub th:first-child{text-align:left}
+  thead tr.sub th:hover{color:var(--text)}
+  thead tr.sub th .si2{margin-left:3px;opacity:.3;font-size:10px}
+  thead tr.sub th.sa .si2::after{content:'▲';opacity:1}
+  thead tr.sub th.sd .si2::after{content:'▼';opacity:1}
+  tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+  tbody tr:hover{background:var(--surface2)}
+  td{padding:9px 12px;white-space:nowrap;text-align:right}
+  td:first-child{text-align:left}
+  .sym{font-weight:700;font-size:13px}
+  .sym .base{color:var(--accent)}
+  .sym .q{color:var(--muted);font-weight:400;font-size:11px}
+  .num{font-variant-numeric:tabular-nums;font-family:'JetBrains Mono','Fira Code',monospace}
+  .pos{color:var(--green)} .neg{color:var(--red)} .neu{color:var(--muted)}
+  .fb{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600}
+  .fp{background:#14301e;color:var(--green)} .fn{background:#2d1515;color:var(--red)} .fz{background:var(--tag);color:var(--muted)}
+  .sr td{text-align:center;padding:60px;color:var(--muted);font-size:13px}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .excount{font-size:10px;color:var(--muted);margin-left:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">PERP<span>SCAN</span></div>
+  <div class="hr">
+    <div class="upd" id="upd">Aguardando...</div>
+    <button class="btn btnp" id="rfBtn" onclick="loadData()">↻ Atualizar</button>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="sw"><span class="si">🔍</span><input type="text" id="search" placeholder="Buscar token..." oninput="render()"></div>
+  <div class="sep"></div>
+  <div class="cl">COLUNAS:</div>
+  <div class="tg" id="colTg"></div>
+  <div class="sep"></div>
+  <div class="cl">TIMEFRAMES (OI & LSR):</div>
+  <div class="tg" id="ivTg"></div>
+</div>
+
+<div class="sbar">
+  <div>Tokens: <span id="sT">—</span></div>
+  <div>Funding + (avg): <span id="sFp" style="color:var(--green)">—</span></div>
+  <div>Funding − (avg): <span id="sFn" style="color:var(--red)">—</span></div>
+  <div id="exStatus" style="color:var(--muted)"></div>
+</div>
+
+<div class="tw"><table id="tbl"><thead id="th"></thead><tbody id="tb"><tr class="sr"><td colspan="20"><span class="spin"></span>Carregando dados...</td></tr></tbody></table></div>
+
+<script>
+const INTERVALS = [{id:'5m',l:'5m'},{id:'15m',l:'15m'},{id:'1h',l:'1h'},{id:'4h',l:'4h'},{id:'1d',l:'1D'}];
+
+const FIXED_COLS = [
+  {id:'symbol',  label:'Token',    always:true},
+  {id:'price',   label:'Preço',    always:true},
+  {id:'volume',  label:'Volume'},
+  {id:'trades',  label:'Trades'},
+  {id:'funding', label:'Funding Avg'},
+];
+
+const SK = 'ps_v5';
+const DEF_COLS = ['volume','trades','funding'];
+const DEF_IVS  = ['5m','15m','1h'];
+
+let activeCols = [...DEF_COLS];
+let activeIVs  = [...DEF_IVS];
+let sortCol    = 'volume';
+let sortDir    = 'desc';
+let allData    = [];
+let filteredData = [];
+let cache      = {}; 
+let exLoaded   = {};
+
+function saveC(){ try{localStorage.setItem(SK,JSON.stringify({activeCols,activeIVs,sortCol,sortDir}))}catch(e){} }
+function loadC(){
+  try{
+    const c=JSON.parse(localStorage.getItem(SK)||'{}');
+    activeCols=c.activeCols||[...DEF_COLS];
+    activeIVs =c.activeIVs ||[...DEF_IVS];
+    sortCol   =c.sortCol   ||'volume';
+    sortDir   =c.sortDir   ||'desc';
+  }catch(e){}
+}
+
+const fj = (url, timeout=8000) => {
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), timeout);
+  return fetch(url, {signal:ctrl.signal})
+    .then(r=>{ clearTimeout(t); if(!r.ok) throw r.status; return r.json(); })
+    .catch(e=>{ clearTimeout(t); throw e; });
+};
+
+function fmtP(n){
+  if(n==null||isNaN(n)) return '—';
+  if(n>=1000) return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(n>=1) return n.toFixed(4);
+  if(n>=0.01) return n.toFixed(5);
+  return n.toFixed(8);
+}
+function fmtK(n){
+  if(n==null||isNaN(n)) return '—';
+  const a=Math.abs(n);
+  if(a>=1e9) return (n/1e9).toFixed(2)+'B';
+  if(a>=1e6) return (n/1e6).toFixed(2)+'M';
+  if(a>=1e3) return (n/1e3).toFixed(2)+'K';
+  return n.toFixed(2);
+}
+function fmt(n,d=3){ return n==null||isNaN(n)?'—':Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+let fundingMap = {};
+
+async function fetchAllFunding(){
+  exLoaded = {};
+  const results = await Promise.allSettled([
+    fetchFundingBinance(),
+    fetchFundingBybit(),
+    fetchFundingOKX(),
+    fetchFundingGate(),
+    fetchFundingBitget(),
+    fetchFundingMEXC(),
+    fetchFundingHTX(),
+    fetchFundingBingX(),
+  ]);
+  const exNames = ['Binance','Bybit','OKX','Gate','Bitget','MEXC','HTX','BingX'];
+  results.forEach((r,i)=>{ exLoaded[exNames[i]] = r.status==='fulfilled'; });
+  const loaded = exNames.filter((_,i)=>results[i].status==='fulfilled');
+  document.getElementById('exStatus').textContent = `Exchanges: ${loaded.join(', ')}`;
+}
+
+function setFunding(token, exchange, rate){
+  if(!fundingMap[token]) fundingMap[token]={};
+  fundingMap[token][exchange] = rate;
+}
+
+function getAvgFunding(token){
+  const ex = fundingMap[token];
+  if(!ex) return null;
+  const vals = Object.values(ex).filter(v=>v!==null&&!isNaN(v));
+  if(!vals.length) return null;
+  return vals.reduce((a,b)=>a+b,0)/vals.length;
+}
+
+async function fetchFundingBinance(){
+  const data = await fj('https://fapi.binance.com/fapi/v1/premiumIndex');
+  for(const d of data){
+    if(d.symbol.endsWith('USDT')){
+      const token = d.symbol.replace('USDT','');
+      setFunding(token,'binance', parseFloat(d.lastFundingRate)*100);
+    }
+  }
+}
+
+async function fetchFundingBybit(){
+  const data = await fj('https://api.bybit.com/v5/market/tickers?category=linear');
+  for(const d of data.result.list){
+    if(d.symbol.endsWith('USDT')){
+      const token = d.symbol.replace('USDT','');
+      setFunding(token,'bybit', parseFloat(d.fundingRate)*100);
+    }
+  }
+}
+
+async function fetchFundingOKX(){
+  const data = await fj('https://www.okx.com/api/v5/public/funding-rate-summary');
+  if(data.data){
+    for(const d of data.data){
+      if(d.instId && d.instId.endsWith('-USDT-SWAP')){
+        const token = d.instId.replace('-USDT-SWAP','');
+        setFunding(token,'okx', parseFloat(d.fundingRate)*100);
+      }
+    }
+  }
+}
+
+async function fetchFundingGate(){
+  const data = await fj('https://api.gateio.ws/api/v4/futures/usdt/contracts');
+  for(const d of data){
+    if(d.funding_rate!==undefined){
+      const token = d.name.replace('_USDT','');
+      setFunding(token,'gate', parseFloat(d.funding_rate)*100);
+    }
+  }
+}
+
+async function fetchFundingBitget(){
+  const data = await fj('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES');
+  if(data.data){
+    for(const d of data.data){
+      if(d.symbol && d.fundingRate!==undefined){
+        const token = d.symbol.replace('USDT','');
+        setFunding(token,'bitget', parseFloat(d.fundingRate)*100);
+      }
+    }
+  }
+}
+
+async function fetchFundingMEXC(){
+  const data = await fj('https://contract.mexc.com/api/v1/contract/ticker');
+  if(data.data){
+    for(const d of data.data){
+      if(d.symbol && d.symbol.endsWith('_USDT') && d.fundingRate!==undefined){
+        const token = d.symbol.replace('_USDT','');
+        setFunding(token,'mexc', parseFloat(d.fundingRate)*100);
+      }
+    }
+  }
+}
+
+async function fetchFundingHTX(){
+  const data = await fj('https://api.hbdm.com/linear-swap-api/v1/swap_batch_funding_rate');
+  if(data.data){
+    for(const d of data.data){
+      if(d.contract_code && d.contract_code.endsWith('-USDT') && d.funding_rate!==undefined){
+        const token = d.contract_code.replace('-USDT','');
+        setFunding(token,'htx', parseFloat(d.funding_rate)*100);
+      }
+    }
+  }
+}
+
+async function fetchFundingBingX(){
+  const data = await fj('https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex');
+  if(data.data){
+    for(const d of data.data){
+      if(d.symbol && d.symbol.endsWith('-USDT') && d.lastFundingRate!==undefined){
+        const token = d.symbol.replace('-USDT','');
+        setFunding(token,'bingx', parseFloat(d.lastFundingRate)*100);
+      }
+    }
+  }
+}
+
+async function loadData(){
+  document.getElementById('upd').textContent='Atualizando...';
+  document.getElementById('rfBtn').disabled=true;
+  document.getElementById('tb').innerHTML='<tr class="sr"><td colspan="20"><span class="spin"></span>Carregando dados...</td></tr>';
+
+  try{
+    const [tickers] = await Promise.all([
+      fj('https://fapi.binance.com/fapi/v1/ticker/24hr'),
+      fetchAllFunding(),
+    ]);
+
+    const sorted = tickers
+      .filter(t=>t.symbol.endsWith('USDT'))
+      .map(t=>({...t,_v:parseFloat(t.quoteVolume)}))
+      .sort((a,b)=>b._v-a._v);
+
+    allData = sorted.map(t=>({
+      symbol:  t.symbol.replace('USDT',''),
+      _sym:    t.symbol,
+      price:   parseFloat(t.lastPrice),
+      volume:  parseFloat(t.quoteVolume),
+      trades:  parseInt(t.count),
+    }));
+
+    // Primeiro render para montar a lista ordenada, depois enriquecer os 20 visíveis
+    render();
+    await enrichVisibleTop20();
+    render();
+    document.getElementById('upd').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+  }catch(e){
+    console.error(e);
+    document.getElementById('upd').textContent='Erro';
+    document.getElementById('tb').innerHTML='<tr class="sr"><td colspan="20">❌ Erro ao carregar dados.</td></tr>';
+  }
+  document.getElementById('rfBtn').disabled=false;
+}
+
+// Mapeia timeframe do scanner para o formato de cada exchange
+const IV_BYBIT_OI  = {'5m':'5min','15m':'15min','1h':'1h','4h':'4h','1d':'1d'};
+const IV_BYBIT_LSR = {'5m':'5min','15m':'15min','1h':'60min','4h':'240min','1d':'1d'};
+
+async function enrichAll(top, ivs){
+  for(const iv of ivs){
+    // ── Binance ──────────────────────────────────────────────────
+    const [bnOiRes, bnLsrRes] = await Promise.all([
+      Promise.allSettled(top.map(t=>fj(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${t.symbol}&period=${iv}&limit=2`))),
+      Promise.allSettled(top.map(t=>fj(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${t.symbol}&period=${iv}&limit=2`))),
+    ]);
+
+    // ── Bybit ─────────────────────────────────────────────────────
+    const bybitIVoi  = IV_BYBIT_OI[iv]  || iv;
+    const bybitIVlsr = IV_BYBIT_LSR[iv] || iv;
+    const [bbOiRes, bbLsrRes] = await Promise.all([
+      Promise.allSettled(top.map(t=>fj(`https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${t.symbol}&intervalTime=${bybitIVoi}&limit=2`))),
+      Promise.allSettled(top.map(t=>fj(`https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=${t.symbol}&period=${bybitIVlsr}&limit=2`))),
+    ]);
+
+    top.forEach((t,i)=>{
+      const sym = t.symbol;
+
+      // ── OI: soma Binance + Bybit ──
+      let oiCur = null, oiPrev = null;
+
+      const bnOi = bnOiRes[i];
+      if(bnOi.status==='fulfilled' && bnOi.value?.length>0){
+        const arr = bnOi.value;
+        oiCur  = parseFloat(arr[arr.length-1].sumOpenInterestValue);
+        oiPrev = arr.length>=2 ? parseFloat(arr[arr.length-2].sumOpenInterestValue) : null;
+      }
+
+      const bbOi = bbOiRes[i];
+      if(bbOi.status==='fulfilled' && bbOi.value?.result?.list?.length>0){
+        const arr = bbOi.value.result.list; // Bybit retorna do mais recente pro mais antigo
+        const bbCur  = parseFloat(arr[0].openInterest);
+        const bbPrev = arr.length>=2 ? parseFloat(arr[1].openInterest) : null;
+        // Bybit OI é em contratos (USD), soma direto
+        oiCur  = (oiCur  ?? 0) + bbCur;
+        if(oiPrev!=null && bbPrev!=null) oiPrev = oiPrev + bbPrev;
+        else if(bbPrev!=null) oiPrev = bbPrev;
+      }
+
+      if(oiCur!=null){
+        cache[`${sym}_oi_${iv}`]      = oiCur;
+        cache[`${sym}_oi_${iv}_prev`] = oiPrev;
+      }
+
+      // ── LSR: média Binance + Bybit ──
+      const lsrVals = {cur:[], prev:[]};
+
+      const bnLsr = bnLsrRes[i];
+      if(bnLsr.status==='fulfilled' && bnLsr.value?.length>0){
+        const arr = bnLsr.value;
+        lsrVals.cur.push(parseFloat(arr[arr.length-1].longShortRatio));
+        if(arr.length>=2) lsrVals.prev.push(parseFloat(arr[arr.length-2].longShortRatio));
+      }
+
+      const bbLsr = bbLsrRes[i];
+      if(bbLsr.status==='fulfilled' && bbLsr.value?.result?.list?.length>0){
+        const arr = bbLsr.value.result.list;
+        lsrVals.cur.push(parseFloat(arr[0].buyRatio) / parseFloat(arr[0].sellRatio));
+        if(arr.length>=2) lsrVals.prev.push(parseFloat(arr[1].buyRatio) / parseFloat(arr[1].sellRatio));
+      }
+
+      if(lsrVals.cur.length>0){
+        cache[`${sym}_lsr_${iv}`]      = lsrVals.cur.reduce((a,b)=>a+b,0)/lsrVals.cur.length;
+        cache[`${sym}_lsr_${iv}_prev`] = lsrVals.prev.length>0
+          ? lsrVals.prev.reduce((a,b)=>a+b,0)/lsrVals.prev.length
+          : null;
+      }
+    });
+  }
+}
+
+// Enriquece os 20 tokens atualmente visíveis na tabela (respeitando sort/filtro atual)
+async function enrichVisibleTop20(){
+  const q=document.getElementById('search').value.trim().toUpperCase();
+  let list = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
+
+  // Ordena igual ao render para pegar os mesmos 20 que aparecem na tela
+  list.sort((a,b)=>{
+    let av=getVal(a,sortCol), bv=getVal(b,sortCol);
+    if(av==null) av=sortDir==='desc'?-Infinity:Infinity;
+    if(bv==null) bv=sortDir==='desc'?-Infinity:Infinity;
+    return sortDir==='desc'?bv-av:av-bv;
+  });
+
+  const top20 = list.slice(0,20).map(d=>({symbol:d._sym}));
+  await enrichAll(top20, activeIVs);
+}
+
+function buildCols(){
+  const fixed = FIXED_COLS.filter(c=>c.always||activeCols.includes(c.id));
+  const oiCols  = activeIVs.map(iv=>({id:`oi_${iv}`,  label:iv, group:'oi',  iv}));
+  const lsrCols = activeIVs.map(iv=>({id:`lsr_${iv}`, label:iv, group:'lsr', iv}));
+  return [...fixed, ...oiCols, ...lsrCols];
+}
+
+function buildHeader(cols){
+  const fixedCount = cols.filter(c=>!c.group).length;
+  const oiCount    = cols.filter(c=>c.group==='oi').length;
+  const lsrCount   = cols.filter(c=>c.group==='lsr').length;
+  let grp='<tr class="grp">';
+  grp+=`<th colspan="${fixedCount}"></th>`;
+  if(oiCount)  grp+=`<th colspan="${oiCount}"  class="g-oi">Open Interest</th>`;
+  if(lsrCount) grp+=`<th colspan="${lsrCount}" class="g-lsr">Long / Short Ratio</th>`;
+  grp+='</tr>';
+  let sub='<tr class="sub">';
+  for(const c of cols){
+    const isSorted=sortCol===c.id;
+    const cls=isSorted?(sortDir==='asc'?'sa':'sd'):'';
+    sub+=`<th class="${cls}" onclick="setSort('${c.id}')">${c.label}<span class="si2"></span></th>`;
+  }
+  sub+='</tr>';
+  document.getElementById('th').innerHTML=grp+sub;
+}
+
+function getVal(d, colId){
+  if(colId.startsWith('oi_')){
+    const iv=colId.replace('oi_','');
+    return cache[`${d._sym}_oi_${iv}`]??null;
+  }
+  if(colId.startsWith('lsr_')){
+    const iv=colId.replace('lsr_','');
+    return cache[`${d._sym}_lsr_${iv}`]??null;
+  }
+  if(colId==='funding') return getAvgFunding(d.symbol);
+  return d[colId]??null;
+}
+
+function render(){
+  const q=document.getElementById('search').value.trim().toUpperCase();
+  filteredData = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
+
+  // Ordena
+  filteredData.sort((a,b)=>{
+    let av=getVal(a,sortCol), bv=getVal(b,sortCol);
+    if(av==null) av=sortDir==='desc'?-Infinity:Infinity;
+    if(bv==null) bv=sortDir==='desc'?-Infinity:Infinity;
+    return sortDir==='desc'?bv-av:av-bv;
+  });
+
+  // Pega apenas os top 20 dinâmicos
+  const displayData = filteredData.slice(0, 20);
+
+  const cols=buildCols();
+  buildHeader(cols);
+  renderRows(cols, displayData);
+  updateStats();
+}
+
+function renderRows(cols, data){
+  const tb=document.getElementById('tb');
+  if(!data.length){tb.innerHTML='<tr class="sr"><td colspan="20">Nenhum token encontrado.</td></tr>';return;}
+  let html='';
+  for(const d of data){
+    html+='<tr>';
+    for(const c of cols) html+=`<td>${cell(c.id,d)}</td>`;
+    html+='</tr>';
+  }
+  tb.innerHTML=html;
+}
+
+function cell(id,d){
+  if(id.startsWith('oi_')){
+    const v=getVal(d,id);
+    if(v==null) return '<span class="neu">—</span>';
+    const iv=id.replace('oi_','');
+    const prev=cache[`${d._sym}_oi_${iv}_prev`];
+    let cls='';
+    if(prev!=null){
+      cls = v>prev ? 'pos' : v<prev ? 'neg' : '';
+    }
+    const pct = (prev!=null && prev!==0) ? ((v-prev)/prev*100) : null;
+    const pctStr = pct!=null ? ` <span style="font-size:10px;opacity:.7">${pct>0?'+':''}${pct.toFixed(2)}%</span>` : '';
+    return `<span class="num ${cls}">${fmtK(v)}</span>${pctStr}`;
+  }
+  if(id.startsWith('lsr_')){
+    const v=getVal(d,id);
+    if(v==null) return '<span class="neu">—</span>';
+    const iv=id.replace('lsr_','');
+    const prev=cache[`${d._sym}_lsr_${iv}_prev`];
+    const pct = (prev!=null && prev!==0) ? ((v-prev)/prev*100) : null;
+    const pctStr = pct!=null ? ` <span style="font-size:10px;opacity:.7">${pct>0?'+':''}${pct.toFixed(2)}%</span>` : '';
+    return `<span class="num ${v>=1?'pos':'neg'}">${fmt(v,3)}</span>${pctStr}`;
+  }
+  switch(id){
+    case 'symbol': return `<div class="sym"><span class="base">${d.symbol}</span><span class="q">/USDT</span></div>`;
+    case 'price':  return `<span class="num">${fmtP(d.price)}</span>`;
+    case 'volume': return `<span class="num">${fmtK(d.volume)}</span>`;
+    case 'trades': return `<span class="num">${fmtK(d.trades)}</span>`;
+    case 'funding':{
+      const avg=getAvgFunding(d.symbol);
+      if(avg==null) return '<span class="neu">—</span>';
+      const exData = fundingMap[d.symbol] || {};
+      const exCount = Object.keys(exData).length;
+      const cls=avg>0.005?'fp':avg<-0.005?'fn':'fz';
+      const p=avg>0?'+':'';
+      const tip = Object.entries(exData).map(([ex,v])=>`${ex}: ${v!=null?(v>0?'+':'')+v.toFixed(4)+'%':'—'}`).join(' | ');
+      return `<span class="fb ${cls}" title="${tip}" style="cursor:help">${p}${avg.toFixed(4)}%</span><span class="excount" title="${tip}">${exCount}ex</span>`;
+    }
+    default: return '—';
+  }
+}
+
+function updateStats(){
+  document.getElementById('sT').textContent=filteredData.length;
+  document.getElementById('sFp').textContent=filteredData.filter(d=>{ const v=getAvgFunding(d.symbol); return v!=null&&v>0; }).length;
+  document.getElementById('sFn').textContent=filteredData.filter(d=>{ const v=getAvgFunding(d.symbol); return v!=null&&v<0; }).length;
+}
+
+function buildColToggles(){
+  const w=document.getElementById('colTg'); w.innerHTML='';
+  for(const c of FIXED_COLS){
+    if(c.always) continue;
+    const b=document.createElement('button');
+    b.className='t'+(activeCols.includes(c.id)?' on':'');
+    b.textContent=c.label;
+    b.onclick=()=>{ const i=activeCols.indexOf(c.id); i>=0?activeCols.splice(i,1):activeCols.push(c.id); b.classList.toggle('on'); saveC(); render(); };
+    w.appendChild(b);
+  }
+}
+
+function buildIVToggles(){
+  const w=document.getElementById('ivTg'); w.innerHTML='';
+  for(const iv of INTERVALS){
+    const b=document.createElement('button');
+    b.className='t'+(activeIVs.includes(iv.id)?' iv':'');
+    b.textContent=iv.l;
+    b.onclick=()=>toggleIV(iv.id,b);
+    w.appendChild(b);
+  }
+}
+
+async function toggleIV(id,btn){
+  if(activeIVs.includes(id)){
+    if(activeIVs.length===1) return;
+    activeIVs=activeIVs.filter(i=>i!==id);
+    btn.classList.remove('iv');
+  } else {
+    activeIVs.push(id);
+    btn.classList.add('iv');
+    // busca o novo timeframe apenas pros 20 visíveis (respeitando sort atual)
+    const q=document.getElementById('search').value.trim().toUpperCase();
+    let list = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
+    list.sort((a,b)=>{
+      let av=getVal(a,sortCol), bv=getVal(b,sortCol);
+      if(av==null) av=sortDir==='desc'?-Infinity:Infinity;
+      if(bv==null) bv=sortDir==='desc'?-Infinity:Infinity;
+      return sortDir==='desc'?bv-av:av-bv;
+    });
+    const top20 = list.slice(0,20).map(d=>({symbol:d._sym}));
+    await enrichAll(top20,[id]);
+  }
+  saveC(); render();
+}
+
+function setSort(col){
+  if(sortCol===col) sortDir=sortDir==='desc'?'asc':'desc';
+  else{sortCol=col;sortDir='desc';}
+  saveC();
+  render(); // mostra imediatamente com dados que já temos (pode ter —)
+  enrichVisibleTop20().then(()=>render()); // busca dados dos novos 20 e re-renderiza
+}
+
+loadC();
+buildColToggles();
+buildIVToggles();
+loadData();
+setInterval(loadData, 30000);
+</script>
+</body>
+</html>
