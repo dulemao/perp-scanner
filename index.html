@@ -164,8 +164,9 @@ async function fetchAllFunding(){
     fetchFundingMEXC(),
     fetchFundingHTX(),
     fetchFundingBingX(),
+    fetchFundingKuCoin(),
   ]);
-  const exNames = ['Binance','Bybit','OKX','Gate','Bitget','MEXC','HTX','BingX'];
+  const exNames = ['Binance','Bybit','OKX','Gate','Bitget','MEXC','HTX','BingX','KuCoin'];
   results.forEach((r,i)=>{ exLoaded[exNames[i]] = r.status==='fulfilled'; });
   const loaded = exNames.filter((_,i)=>results[i].status==='fulfilled');
   document.getElementById('exStatus').textContent = `Exchanges: ${loaded.join(', ')}`;
@@ -184,94 +185,152 @@ function getAvgFunding(token){
   return vals.reduce((a,b)=>a+b,0)/vals.length;
 }
 
+// Proxy para exchanges com CORS restrito
+// allorigins retorna {contents: "..."} então precisamos parsear
+const pj = async (url) => {
+  const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+  const res = await fj(proxy);
+  if(res && res.contents) return JSON.parse(res.contents);
+  throw new Error('proxy empty');
+};
+
 async function fetchFundingBinance(){
   const data = await fj('https://fapi.binance.com/fapi/v1/premiumIndex');
+  let count = 0;
   for(const d of data){
     if(d.symbol.endsWith('USDT')){
       const token = d.symbol.replace('USDT','');
       setFunding(token,'binance', parseFloat(d.lastFundingRate)*100);
+      count++;
     }
   }
+  console.log(`[Funding] Binance: ${count} tokens`);
 }
 
 async function fetchFundingBybit(){
   const data = await fj('https://api.bybit.com/v5/market/tickers?category=linear');
+  let count = 0;
   for(const d of data.result.list){
     if(d.symbol.endsWith('USDT')){
       const token = d.symbol.replace('USDT','');
       setFunding(token,'bybit', parseFloat(d.fundingRate)*100);
+      count++;
     }
   }
+  console.log(`[Funding] Bybit: ${count} tokens`);
 }
 
 async function fetchFundingOKX(){
-  const data = await fj('https://www.okx.com/api/v5/public/funding-rate-summary');
-  if(data.data){
-    for(const d of data.data){
+  // OKX: funding-rate-summary aceita CORS direto
+  const t = await fj('https://www.okx.com/api/v5/public/funding-rate-summary?instType=SWAP');
+  let count = 0;
+  if(t.data){
+    for(const d of t.data){
       if(d.instId && d.instId.endsWith('-USDT-SWAP')){
         const token = d.instId.replace('-USDT-SWAP','');
-        setFunding(token,'okx', parseFloat(d.fundingRate)*100);
+        const rate = d.fundingRate ?? d.nextFundingRate;
+        if(rate !== undefined){
+          setFunding(token,'okx', parseFloat(rate)*100);
+          count++;
+        }
       }
     }
   }
+  console.log(`[Funding] OKX: ${count} tokens`);
 }
 
 async function fetchFundingGate(){
-  const data = await fj('https://api.gateio.ws/api/v4/futures/usdt/contracts');
-  for(const d of data){
-    if(d.funding_rate!==undefined){
-      const token = d.name.replace('_USDT','');
-      setFunding(token,'gate', parseFloat(d.funding_rate)*100);
+  // Gate.io aceita CORS com header correto
+  const data = await fj('https://api.gateio.ws/api/v4/futures/usdt/contracts?limit=1000');
+  let count = 0;
+  if(Array.isArray(data)){
+    for(const d of data){
+      if(d.funding_rate!==undefined && d.name && d.name.endsWith('_USDT')){
+        const token = d.name.replace('_USDT','');
+        setFunding(token,'gate', parseFloat(d.funding_rate)*100);
+        count++;
+      }
     }
   }
+  console.log(`[Funding] Gate: ${count} tokens`);
 }
 
 async function fetchFundingBitget(){
   const data = await fj('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES');
+  let count = 0;
   if(data.data){
     for(const d of data.data){
       if(d.symbol && d.fundingRate!==undefined){
-        const token = d.symbol.replace('USDT','');
+        const token = d.symbol.replace(/_?USDT$/,'');
         setFunding(token,'bitget', parseFloat(d.fundingRate)*100);
+        count++;
       }
     }
   }
+  console.log(`[Funding] Bitget: ${count} tokens`);
 }
 
 async function fetchFundingMEXC(){
-  const data = await fj('https://contract.mexc.com/api/v1/contract/ticker');
-  if(data.data){
+  // MEXC endpoint alternativo
+  const data = await fj('https://contract.mexc.com/api/v1/contract/detail');
+  let count = 0;
+  if(data && data.data){
     for(const d of data.data){
       if(d.symbol && d.symbol.endsWith('_USDT') && d.fundingRate!==undefined){
         const token = d.symbol.replace('_USDT','');
         setFunding(token,'mexc', parseFloat(d.fundingRate)*100);
+        count++;
       }
     }
   }
+  console.log(`[Funding] MEXC: ${count} tokens`);
 }
 
 async function fetchFundingHTX(){
+  // HTX endpoint direto sem proxy
   const data = await fj('https://api.hbdm.com/linear-swap-api/v1/swap_batch_funding_rate');
-  if(data.data){
+  let count = 0;
+  if(data && data.data){
     for(const d of data.data){
       if(d.contract_code && d.contract_code.endsWith('-USDT') && d.funding_rate!==undefined){
         const token = d.contract_code.replace('-USDT','');
         setFunding(token,'htx', parseFloat(d.funding_rate)*100);
+        count++;
       }
     }
   }
+  console.log(`[Funding] HTX: ${count} tokens`);
 }
 
 async function fetchFundingBingX(){
-  const data = await fj('https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex');
-  if(data.data){
+  const data = await fj('https://open-api.bingx.com/openApi/swap/v2/quote/premiumIndex?symbol=');
+  let count = 0;
+  if(data && data.data){
     for(const d of data.data){
       if(d.symbol && d.symbol.endsWith('-USDT') && d.lastFundingRate!==undefined){
         const token = d.symbol.replace('-USDT','');
         setFunding(token,'bingx', parseFloat(d.lastFundingRate)*100);
+        count++;
       }
     }
   }
+  console.log(`[Funding] BingX: ${count} tokens`);
+}
+
+async function fetchFundingKuCoin(){
+  const data = await fj('https://api-futures.kucoin.com/api/v1/contracts/active');
+  let count = 0;
+  if(data.data){
+    for(const d of data.data){
+      if(d.symbol && d.symbol.endsWith('USDTM') && d.fundingFeeRate!==undefined){
+        const token = d.symbol.replace('USDTM','');
+        const norm = token === 'XBT' ? 'BTC' : token;
+        setFunding(norm,'kucoin', parseFloat(d.fundingFeeRate)*100);
+        count++;
+      }
+    }
+  }
+  console.log(`[Funding] KuCoin: ${count} tokens`);
 }
 
 async function loadData(){
@@ -578,11 +637,116 @@ function setSort(col){
   enrichVisibleTop20().then(()=>render()); // busca dados dos novos 20 e re-renderiza
 }
 
+// Atualiza silenciosamente só as células visíveis — sem piscar
+function updateCellSilent(sym, colId, newHtml){
+  const rows = document.getElementById('tb').querySelectorAll('tr');
+  const cols = buildCols();
+  const colIdx = cols.findIndex(c=>c.id===colId);
+  if(colIdx<0) return;
+  for(const row of rows){
+    const tds = row.querySelectorAll('td');
+    // identifica a linha pelo símbolo
+    const symEl = tds[0]?.querySelector('.base');
+    if(symEl && symEl.textContent === sym){
+      if(tds[colIdx]) tds[colIdx].innerHTML = newHtml;
+      break;
+    }
+  }
+}
+
+// Atualiza funding de todas as linhas visíveis silenciosamente
+async function silentUpdateFunding(){
+  await fetchAllFunding();
+  const rows = document.getElementById('tb').querySelectorAll('tr');
+  const cols = buildCols();
+  const fundingIdx = cols.findIndex(c=>c.id==='funding');
+  if(fundingIdx<0) return;
+  for(const row of rows){
+    const tds = row.querySelectorAll('td');
+    const symEl = tds[0]?.querySelector('.base');
+    if(!symEl) continue;
+    const sym = symEl.textContent;
+    const d = allData.find(x=>x.symbol===sym);
+    if(!d) continue;
+    if(tds[fundingIdx]) tds[fundingIdx].innerHTML = cell('funding', d);
+  }
+  // Atualiza stats
+  updateStats();
+  document.getElementById('upd').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+}
+
+// Atualiza OI/LSR das linhas visíveis silenciosamente
+async function silentUpdateOI(){
+  await enrichVisibleTop20();
+  const rows = document.getElementById('tb').querySelectorAll('tr');
+  const cols = buildCols();
+  for(const row of rows){
+    const tds = row.querySelectorAll('td');
+    const symEl = tds[0]?.querySelector('.base');
+    if(!symEl) continue;
+    const sym = symEl.textContent;
+    const d = allData.find(x=>x.symbol===sym);
+    if(!d) continue;
+    cols.forEach((c,i)=>{
+      if((c.id.startsWith('oi_')||c.id.startsWith('lsr_')) && tds[i]){
+        tds[i].innerHTML = cell(c.id, d);
+      }
+    });
+  }
+}
+
+// Atualização completa (preço, volume, trades) — reordena a tabela
+async function silentUpdateFull(){
+  try{
+    const tickers = await fj('https://fapi.binance.com/fapi/v1/ticker/24hr');
+    const map = {};
+    for(const t of tickers){
+      if(t.symbol.endsWith('USDT')) map[t.symbol] = t;
+    }
+    for(const d of allData){
+      const t = map[d._sym];
+      if(t){
+        d.price  = parseFloat(t.lastPrice);
+        d.volume = parseFloat(t.quoteVolume);
+        d.trades = parseInt(t.count);
+      }
+    }
+    // Re-renderiza só se sort for por volume/price/trades (muda ordem)
+    if(['volume','price','trades'].includes(sortCol)) render();
+    else {
+      // só atualiza as células de preço/volume/trades sem reordenar
+      const rows = document.getElementById('tb').querySelectorAll('tr');
+      const cols = buildCols();
+      for(const row of rows){
+        const tds = row.querySelectorAll('td');
+        const symEl = tds[0]?.querySelector('.base');
+        if(!symEl) continue;
+        const sym = symEl.textContent;
+        const d = allData.find(x=>x.symbol===sym);
+        if(!d) continue;
+        cols.forEach((c,i)=>{
+          if(['price','volume','trades'].includes(c.id) && tds[i]){
+            tds[i].innerHTML = cell(c.id, d);
+          }
+        });
+      }
+    }
+  }catch(e){}
+}
+
 loadC();
 buildColToggles();
 buildIVToggles();
 loadData();
-setInterval(loadData, 30000);
+
+// Funding: atualiza a cada 5s silenciosamente
+setInterval(silentUpdateFunding, 5000);
+
+// OI/LSR: atualiza a cada 15s silenciosamente
+setInterval(silentUpdateOI, 15000);
+
+// Preço/Volume/Trades: atualiza a cada 10s silenciosamente
+setInterval(silentUpdateFull, 10000);
 </script>
 </body>
 </html>
