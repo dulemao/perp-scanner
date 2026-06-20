@@ -123,6 +123,18 @@
   
   tr.alert-hit{background:rgba(239,68,68,.06)!important}
   tr.alert-hit td:first-child{border-left:2px solid var(--red)!important}
+
+  /* ── FILTROS AVANÇADOS ── */
+  .fbar{display:flex;align-items:center;gap:10px;padding:8px 20px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .fbar-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
+  .fbar-group{display:flex;align-items:center;gap:6px;background:var(--tag);border:1px solid var(--border);border-radius:8px;padding:4px 10px}
+  .fbar-group.active{border-color:var(--accent);background:rgba(79,142,247,.06)}
+  .fbar-group label{font-size:11px;color:var(--muted);white-space:nowrap;font-weight:600}
+  .fbar-group select,.fbar-group input{background:transparent;border:none;color:var(--text);font-size:12px;font-family:'Inter','Segoe UI',sans-serif;outline:none;cursor:pointer}
+  .fbar-group input{width:70px;border-bottom:1px solid var(--border)}
+  .fbar-group input:focus{border-bottom-color:var(--accent)}
+  .fbar-clear{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:'Inter','Segoe UI',sans-serif;transition:all .15s}
+  .fbar-clear:hover{border-color:var(--red);color:var(--red)}
 </style>
 </head>
 <body>
@@ -144,6 +156,45 @@
   <div class="sep"></div>
   <div class="cl">TIMEFRAMES (OI & LSR):</div>
   <div class="tg" id="ivTg"></div>
+</div>
+
+<div class="fbar" id="filterBar">
+  <span class="fbar-label">Filtros:</span>
+
+  <div class="fbar-group" id="fg-funding">
+    <label>Funding</label>
+    <select id="fFundingOp" onchange="applyAdvFilters()">
+      <option value="">--</option>
+      <option value="gt">&gt; maior</option>
+      <option value="lt">&lt; menor</option>
+    </select>
+    <input type="number" id="fFundingVal" step="0.0001" placeholder="ex: -0.05" onchange="applyAdvFilters()" oninput="applyAdvFilters()">
+    <span style="font-size:11px;color:var(--muted)">%</span>
+  </div>
+
+  <div class="fbar-group" id="fg-oi">
+    <label>OI (conjunto)</label>
+    <select id="fOiDir" onchange="applyAdvFilters()">
+      <option value="">--</option>
+      <option value="up">↑ maioria subindo</option>
+      <option value="dn">↓ maioria caindo</option>
+      <option value="all_up">↑↑ todos subindo</option>
+      <option value="all_dn">↓↓ todos caindo</option>
+    </select>
+  </div>
+
+  <div class="fbar-group" id="fg-lsr">
+    <label>LSR (conjunto)</label>
+    <select id="fLsrDir" onchange="applyAdvFilters()">
+      <option value="">--</option>
+      <option value="up">↑ maioria subindo</option>
+      <option value="dn">↓ maioria caindo</option>
+      <option value="all_up">↑↑ todos subindo</option>
+      <option value="all_dn">↓↓ todos caindo</option>
+    </select>
+  </div>
+
+  <button class="fbar-clear" onclick="clearAdvFilters()">✕ Limpar</button>
 </div>
 
 <div class="sbar">
@@ -176,6 +227,90 @@ let sortCol    = 'volume';
 let sortDir    = 'desc';
 let allData    = [];
 let filteredData = [];
+let advFilters = { fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
+
+function applyAdvFilters(){
+  advFilters.fundingOp  = document.getElementById('fFundingOp').value;
+  advFilters.fundingVal = document.getElementById('fFundingVal').value;
+  advFilters.oiDir      = document.getElementById('fOiDir').value;
+  advFilters.lsrDir     = document.getElementById('fLsrDir').value;
+  
+  // Destaca grupos ativos
+  document.getElementById('fg-funding').classList.toggle('active', !!(advFilters.fundingOp && advFilters.fundingVal!==''));
+  document.getElementById('fg-oi').classList.toggle('active', !!advFilters.oiDir);
+  document.getElementById('fg-lsr').classList.toggle('active', !!advFilters.lsrDir);
+  
+  render();
+}
+
+function clearAdvFilters(){
+  document.getElementById('fFundingOp').value='';
+  document.getElementById('fFundingVal').value='';
+  document.getElementById('fOiDir').value='';
+  document.getElementById('fLsrDir').value='';
+  advFilters = { fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
+  document.getElementById('fg-funding').classList.remove('active');
+  document.getElementById('fg-oi').classList.remove('active');
+  document.getElementById('fg-lsr').classList.remove('active');
+  render();
+}
+
+function passAdvFilter(d){
+  const ivs = ['5m','15m','1h','4h','1d'];
+  
+  // Funding filter
+  if(advFilters.fundingOp && advFilters.fundingVal!==''){
+    const v = getAvgFunding(d.symbol);
+    const threshold = parseFloat(advFilters.fundingVal);
+    if(v==null) return false;
+    if(advFilters.fundingOp==='gt' && !(v > threshold)) return false;
+    if(advFilters.fundingOp==='lt' && !(v < threshold)) return false;
+  }
+  
+  // OI direction filter (conjunto dos timeframes ativos)
+  if(advFilters.oiDir){
+    const activeIvsNow = ivs.filter(iv => activeIVs.includes(iv));
+    const results = activeIvsNow.map(iv=>{
+      const cur  = cache[`${d._sym}_oi_${iv}`];
+      const prev = cache[`${d._sym}_oi_${iv}_prev`];
+      if(cur==null||prev==null) return null;
+      return cur > prev ? 'up' : cur < prev ? 'dn' : 'flat';
+    }).filter(r=>r!==null);
+    
+    if(results.length===0) return false;
+    const ups = results.filter(r=>r==='up').length;
+    const dns = results.filter(r=>r==='dn').length;
+    const total = results.length;
+    
+    if(advFilters.oiDir==='up'     && !(ups > total/2)) return false;
+    if(advFilters.oiDir==='dn'     && !(dns > total/2)) return false;
+    if(advFilters.oiDir==='all_up' && !(ups === total)) return false;
+    if(advFilters.oiDir==='all_dn' && !(dns === total)) return false;
+  }
+  
+  // LSR filter (direção do conjunto dos timeframes ativos)
+  if(advFilters.lsrDir){
+    const activeIvsNow = ivs.filter(iv => activeIVs.includes(iv));
+    const results = activeIvsNow.map(iv=>{
+      const cur  = cache[`${d._sym}_lsr_${iv}`];
+      const prev = cache[`${d._sym}_lsr_${iv}_prev`];
+      if(cur==null||prev==null) return null;
+      return cur > prev ? 'up' : cur < prev ? 'dn' : 'flat';
+    }).filter(r=>r!==null);
+    
+    if(results.length===0) return false;
+    const ups = results.filter(r=>r==='up').length;
+    const dns = results.filter(r=>r==='dn').length;
+    const total = results.length;
+    
+    if(advFilters.lsrDir==='up'     && !(ups > total/2)) return false;
+    if(advFilters.lsrDir==='dn'     && !(dns > total/2)) return false;
+    if(advFilters.lsrDir==='all_up' && !(ups === total)) return false;
+    if(advFilters.lsrDir==='all_dn' && !(dns === total)) return false;
+  }
+  
+  return true;
+}
 let cache      = {}; 
 let exLoaded   = {};
 
@@ -238,8 +373,7 @@ async function fetchAllFunding(){
 
 function setFunding(token, exchange, rate, intervalHours=8){
   if(!fundingMap[token]) fundingMap[token]={};
-  // Normaliza para equivalente 8h: rate_8h = rate * (8 / intervalHours)
-  fundingMap[token][exchange] = rate * (8 / intervalHours);
+  fundingMap[token][exchange] = rate;
 }
 
 function getAvgFunding(token){
@@ -533,6 +667,10 @@ async function enrichVisibleTop20(){
   const q=document.getElementById('search').value.trim().toUpperCase();
   let list = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
 
+  // Aplica filtros avançados igual ao render
+  const hasAdvFilter = advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
+  if(hasAdvFilter) list = list.filter(d => passAdvFilter(d));
+
   // Ordena igual ao render para pegar os mesmos 20 que aparecem na tela
   list.sort((a,b)=>{
     let av=getVal(a,sortCol), bv=getVal(b,sortCol);
@@ -565,7 +703,13 @@ function buildHeader(cols){
   for(const c of cols){
     const isSorted=sortCol===c.id;
     const cls=isSorted?(sortDir==='asc'?'sa':'sd'):'';
-    sub+=`<th class="${cls}" onclick="setSort('${c.id}')">${c.label}<span class="si2"></span></th>`;
+    const lsrCols = cols.filter(x=>x.group==='lsr');
+    const oiCols  = cols.filter(x=>x.group==='oi');
+    const firstLsr = lsrCols.length>0 && c===lsrCols[0];
+    const lastOi   = oiCols.length>0  && c===oiCols[oiCols.length-1];
+    const sep = firstLsr ? ' style="border-left:2px solid var(--accent2);padding-left:20px"'
+              : lastOi   ? ' style="padding-right:20px"' : '';
+    sub+=`<th class="${cls}" onclick="setSort('${c.id}')"${sep}>${c.label}<span class="si2"></span></th>`;
   }
   sub+='</tr>';
   document.getElementById('th').innerHTML=grp+sub;
@@ -587,6 +731,9 @@ function getVal(d, colId){
 function render(){
   const q=document.getElementById('search').value.trim().toUpperCase();
   filteredData = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
+  // Aplica filtros avançados
+  const hasAdvFilter = advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
+  if(hasAdvFilter) filteredData = filteredData.filter(d => passAdvFilter(d));
 
   // Ordena
   filteredData.sort((a,b)=>{
@@ -611,7 +758,15 @@ function renderRows(cols, data){
   let html='';
   for(const d of data){
     html+='<tr>';
-    for(const c of cols) html+=`<td>${cell(c.id,d)}</td>`;
+    for(const c of cols){
+      const lsrCols = cols.filter(x=>x.group==='lsr');
+      const oiCols  = cols.filter(x=>x.group==='oi');
+      const firstLsr = lsrCols.length>0 && c===lsrCols[0];
+      const lastOi   = oiCols.length>0  && c===oiCols[oiCols.length-1];
+      const sep = firstLsr ? ' style="border-left:2px solid var(--accent2);padding-left:20px"'
+                : lastOi   ? ' style="padding-right:20px"' : '';
+      html+=`<td${sep}>${cell(c.id,d)}</td>`;
+    }
     html+='</tr>';
   }
   tb.innerHTML=html;
