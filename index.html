@@ -161,6 +161,21 @@
 <div class="fbar" id="filterBar">
   <span class="fbar-label">Filtros:</span>
 
+  <div class="fbar-group" id="fg-volume">
+    <label>Volume</label>
+    <select id="fVolumeOp" onchange="applyAdvFilters()">
+      <option value="">--</option>
+      <option value="gt">&gt; maior</option>
+      <option value="lt">&lt; menor</option>
+    </select>
+    <input type="number" id="fVolumeVal" step="1" placeholder="ex: 100" onchange="applyAdvFilters()" oninput="applyAdvFilters()" style="width:60px">
+    <select id="fVolumeMult" onchange="applyAdvFilters()">
+      <option value="1000">K</option>
+      <option value="1000000" selected>M</option>
+      <option value="1000000000">B</option>
+    </select>
+  </div>
+
   <div class="fbar-group" id="fg-funding">
     <label>Funding</label>
     <select id="fFundingOp" onchange="applyAdvFilters()">
@@ -227,15 +242,19 @@ let sortCol    = 'volume';
 let sortDir    = 'desc';
 let allData    = [];
 let filteredData = [];
-let advFilters = { fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
+let advFilters = { volumeOp:'', volumeVal:'', fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
 
 function applyAdvFilters(){
+  advFilters.volumeOp   = document.getElementById('fVolumeOp').value;
+  advFilters.volumeVal  = document.getElementById('fVolumeVal').value;
+  advFilters.volumeMult = document.getElementById('fVolumeMult').value;
   advFilters.fundingOp  = document.getElementById('fFundingOp').value;
   advFilters.fundingVal = document.getElementById('fFundingVal').value;
   advFilters.oiDir      = document.getElementById('fOiDir').value;
   advFilters.lsrDir     = document.getElementById('fLsrDir').value;
   
   // Destaca grupos ativos
+  document.getElementById('fg-volume').classList.toggle('active', !!(advFilters.volumeOp && advFilters.volumeVal!==''));
   document.getElementById('fg-funding').classList.toggle('active', !!(advFilters.fundingOp && advFilters.fundingVal!==''));
   document.getElementById('fg-oi').classList.toggle('active', !!advFilters.oiDir);
   document.getElementById('fg-lsr').classList.toggle('active', !!advFilters.lsrDir);
@@ -244,11 +263,15 @@ function applyAdvFilters(){
 }
 
 function clearAdvFilters(){
+  document.getElementById('fVolumeOp').value='';
+  document.getElementById('fVolumeVal').value='';
+  document.getElementById('fVolumeMult').value='1000000';
   document.getElementById('fFundingOp').value='';
   document.getElementById('fFundingVal').value='';
   document.getElementById('fOiDir').value='';
   document.getElementById('fLsrDir').value='';
-  advFilters = { fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
+  advFilters = { volumeOp:'', volumeVal:'', fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
+  document.getElementById('fg-volume').classList.remove('active');
   document.getElementById('fg-funding').classList.remove('active');
   document.getElementById('fg-oi').classList.remove('active');
   document.getElementById('fg-lsr').classList.remove('active');
@@ -259,6 +282,15 @@ function passAdvFilter(d){
   const ivs = ['5m','15m','1h','4h','1d'];
   
   // Funding filter
+  if(advFilters.volumeOp && advFilters.volumeVal!==''){
+    const v = d.volume;
+    const mult = parseFloat(advFilters.volumeMult || 1000000);
+    const threshold = parseFloat(advFilters.volumeVal) * mult;
+    if(v==null) return false;
+    if(advFilters.volumeOp==='gt' && !(v > threshold)) return false;
+    if(advFilters.volumeOp==='lt' && !(v < threshold)) return false;
+  }
+
   if(advFilters.fundingOp && advFilters.fundingVal!==''){
     const v = getAvgFunding(d.symbol);
     const threshold = parseFloat(advFilters.fundingVal);
@@ -668,7 +700,7 @@ async function enrichVisibleTop20(){
   let list = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
 
   // Aplica filtros avançados igual ao render
-  const hasAdvFilter = advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
+  const hasAdvFilter = advFilters.volumeOp || advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
   if(hasAdvFilter) list = list.filter(d => passAdvFilter(d));
 
   // Ordena igual ao render para pegar os mesmos 20 que aparecem na tela
@@ -732,7 +764,7 @@ function render(){
   const q=document.getElementById('search').value.trim().toUpperCase();
   filteredData = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
   // Aplica filtros avançados
-  const hasAdvFilter = advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
+  const hasAdvFilter = advFilters.volumeOp || advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
   if(hasAdvFilter) filteredData = filteredData.filter(d => passAdvFilter(d));
 
   // Ordena
