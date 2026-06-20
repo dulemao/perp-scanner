@@ -236,9 +236,10 @@ async function fetchAllFunding(){
   document.getElementById('exStatus').textContent = `Exchanges: ${loaded.join(', ')}`;
 }
 
-function setFunding(token, exchange, rate){
+function setFunding(token, exchange, rate, intervalHours=8){
   if(!fundingMap[token]) fundingMap[token]={};
-  fundingMap[token][exchange] = rate;
+  // Normaliza para equivalente 8h: rate_8h = rate * (8 / intervalHours)
+  fundingMap[token][exchange] = rate * (8 / intervalHours);
 }
 
 function getAvgFunding(token){
@@ -320,13 +321,30 @@ async function fetchFundingGate(){
 }
 
 async function fetchFundingBitget(){
-  const data = await fj('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES');
+  // Busca tickers (funding rate) e contracts (interval) em paralelo
+  const [tickRes, contractRes] = await Promise.allSettled([
+    fj('https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES'),
+    fj('https://api.bitget.com/api/v2/mix/market/contracts?productType=USDT-FUTURES'),
+  ]);
+  
+  // Monta mapa de intervalo por símbolo
+  const intervalMap = {};
+  if(contractRes.status==='fulfilled' && contractRes.value?.data){
+    for(const c of contractRes.value.data){
+      if(c.symbol && c.fundingInterval){
+        // fundingInterval vem em minutos na Bitget v2
+        intervalMap[c.symbol] = parseFloat(c.fundingInterval) / 60;
+      }
+    }
+  }
+  
   let count = 0;
-  if(data.data){
-    for(const d of data.data){
+  if(tickRes.status==='fulfilled' && tickRes.value?.data){
+    for(const d of tickRes.value.data){
       if(d.symbol && d.fundingRate!==undefined){
         const token = d.symbol.replace(/_?USDT$/,'');
-        setFunding(token,'bitget', parseFloat(d.fundingRate)*100);
+        const intervalHours = intervalMap[d.symbol] || 8;
+        setFunding(token,'bitget', parseFloat(d.fundingRate)*100, intervalHours);
         count++;
       }
     }
@@ -634,7 +652,7 @@ function cell(id,d){
       const exCount = Object.keys(exData).length;
       const cls=avg>0.005?'fp':avg<-0.005?'fn':'fz';
       const p=avg>0?'+':'';
-      const tip = Object.entries(exData).map(([ex,v])=>`${ex}: ${v!=null?(v>0?'+':'')+v.toFixed(4)+'%':'—'}`).join(' | ');
+      const tip = "(normalizado para 8h) " + Object.entries(exData).map(([ex,v])=>`${ex}: ${v!=null?(v>0?'+':'')+v.toFixed(4)+'%':'—'}`).join(' | ');
       return `<span class="fb ${cls}" title="${tip}" style="cursor:help">${p}${avg.toFixed(4)}%</span><span class="excount" title="${tip}">${exCount}ex</span>`;
     }
     default: return '—';
