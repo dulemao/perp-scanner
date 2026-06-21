@@ -135,6 +135,14 @@
   .fbar-group input:focus{border-bottom-color:var(--accent)}
   .fbar-clear{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-family:'Inter','Segoe UI',sans-serif;transition:all .15s}
   .fbar-clear:hover{border-color:var(--red);color:var(--red)}
+
+  /* ── TV MENU ── */
+  .sym-wrap{position:relative;display:inline-block}
+  .tv-menu{display:none;position:absolute;top:100%;left:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;z-index:500;min-width:140px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden}
+  .tv-menu.open{display:block}
+  .tv-menu a{display:block;padding:7px 14px;font-size:12px;color:var(--text);text-decoration:none;transition:background .15s;white-space:nowrap}
+  .tv-menu a:hover{background:var(--surface2);color:var(--accent)}
+  .tv-menu-title{padding:6px 14px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -828,7 +836,14 @@ function cell(id,d){
     return `<span class="num ${v>=1?'pos':'neg'}">${fmt(v,3)}</span>${pctStr}`;
   }
   switch(id){
-    case 'symbol': return `<div class="sym"><span class="base">${d.symbol}</span><span class="q">/USDT</span></div>`;
+    case 'symbol': {
+      const sym = d._sym;
+      const base = d.symbol;
+      // Abre a página de mercados do TradingView — lista todas as exchanges com o par
+      const tvUrl = `https://www.tradingview.com/symbols/${sym}.P/markets/`;
+      return `<div class="sym"><a href="${tvUrl}" target="_blank" rel="noopener" style="text-decoration:none"><span class="base">${base}</span> <span style="font-size:9px;color:var(--muted);opacity:.7">↗</span></a><span class="q">/USDT</span></div>`;
+    }
+
     case 'price':  return `<span class="num">${fmtP(d.price)}</span>`;
     case 'volume': return `<span class="num">${fmtK(d.volume)}</span>`;
     case 'trades': return `<span class="num">${fmtK(d.trades)}</span>`;
@@ -1280,6 +1295,97 @@ function showToast(alertName, symbols){
 if(Notification.permission==='default') Notification.requestPermission();
 setInterval(checkAlerts, 5000);
 renderAlertList();
+</script>
+
+<script>
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.sym-wrap')){
+    document.querySelectorAll('.tv-menu').forEach(m=>m.classList.remove('open'));
+  }
+});
+
+const tvCache = {}; // sym -> [{name, url}]
+
+async function openTVMenu(menuId, sym, e){
+  e.preventDefault();
+  e.stopPropagation();
+  const menu = document.getElementById(menuId);
+  document.querySelectorAll('.tv-menu').forEach(m=>{if(m!==menu) m.classList.remove('open');});
+  menu.classList.toggle('open');
+  if(!menu.classList.contains('open')) return;
+
+  // Já verificado antes
+  if(tvCache[sym]){
+    renderTVMenu(menu, tvCache[sym]);
+    return;
+  }
+
+  menu.innerHTML = '<div class="tv-menu-title">Verificando...</div>';
+
+  const exchanges = [
+    {name:'Binance', symbol:`BINANCE:${sym}USDT.P`},
+    {name:'Bybit',   symbol:`BYBIT:${sym}USDT.P`},
+    {name:'Bitget',  symbol:`BITGET:${sym}USDT.P`},
+    {name:'LBank',   symbol:`LBANK:${sym}USDT`},
+    {name:'BingX',   symbol:`BINGX:${sym}USDT.PS`},
+  ];
+
+  // Busca o símbolo na API de busca do TradingView via proxy
+  const exchanges = [
+    {name:'Binance', symbol:`BINANCE:${sym}USDT.P`},
+    {name:'Bybit',   symbol:`BYBIT:${sym}USDT.P`},
+    {name:'Bitget',  symbol:`BITGET:${sym}USDT.P`},
+    {name:'LBank',   symbol:`LBANK:${sym}USDT`},
+    {name:'BingX',   symbol:`BINGX:${sym}USDT.PS`},
+  ];
+
+  // Verifica via TradingView scanner API (sem CORS)
+  const checkSymbol = (ex) => new Promise(resolve => {
+    const img = new Image();
+    img.src = `https://s.tradingview.com/embed-widget/mini-symbol-overview/?symbol=${ex.symbol}&t=${Date.now()}`;
+    // Usa fetch via no-cors para ver se responde
+    fetch(`https://symbol-search.tradingview.com/symbol_search/v3/?text=${encodeURIComponent(ex.symbol)}&hl=0&exchange=&lang=en&search_type=undefined&domain=production&sort_by_country=US`, {mode:'no-cors'})
+      .then(() => resolve(ex))
+      .catch(() => resolve(null));
+    setTimeout(() => resolve(ex), 1500); // timeout — assume que existe
+  });
+
+  // Verifica cada exchange via fetch ao endpoint de dados
+  const results = await Promise.all(
+    exchanges.map(ex =>
+      fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://symbol-search.tradingview.com/symbol_search/v3/?text=${ex.symbol.replace(':','%3A')}&hl=0&lang=en&search_type=undefined&domain=production`)}`)
+        .then(r => r.json())
+        .then(json => {
+          const data = JSON.parse(json.contents || '[]');
+          const exName = ex.symbol.split(':')[0].toUpperCase();
+          const symName = ex.symbol.split(':')[1].replace('.P','').replace('.PS','').toUpperCase();
+          const found = Array.isArray(data) && data.some(s =>
+            (s.exchange||'').toUpperCase() === exName &&
+            (s.symbol||'').toUpperCase().startsWith(symName)
+          );
+          return found ? ex : null;
+        })
+        .catch(() => null)
+    )
+  );
+
+  const available = results.filter(v => v !== null).map(ex => ({
+    name: ex.name,
+    url: `https://www.tradingview.com/chart/?symbol=${ex.symbol}`
+  }));
+
+  tvCache[sym] = available;
+  renderTVMenu(menu, available);
+}
+
+function renderTVMenu(menu, available){
+  if(available.length===0){
+    menu.innerHTML = '<div class="tv-menu-title">Nenhum gráfico encontrado</div>';
+    return;
+  }
+  menu.innerHTML = '<div class="tv-menu-title">Abrir gráfico</div>'
+    + available.map(ex=>`<a href="${ex.url}" target="_blank" rel="noopener">${ex.name}</a>`).join('');
+}
 </script>
 </body>
 </html>
