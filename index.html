@@ -143,6 +143,12 @@
   .tv-menu a{display:block;padding:7px 14px;font-size:12px;color:var(--text);text-decoration:none;transition:background .15s;white-space:nowrap}
   .tv-menu a:hover{background:var(--surface2);color:var(--accent)}
   .tv-menu-title{padding:6px 14px;font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+
+  /* ── FAVORITOS ── */
+  .fav-btn{background:none;border:none;cursor:pointer;font-size:14px;padding:0 4px;opacity:.3;transition:all .15s;line-height:1;text-shadow:0 0 1px #fff, 0 0 1px #fff}
+  .fav-btn.on{opacity:1;color:#fbbf24;text-shadow:0 0 2px #fbbf24}
+  .fav-btn:hover{opacity:.8;transform:scale(1.2)}
+  .t.fav-on{background:rgba(251,191,36,.1);border-color:#fbbf24;color:#fbbf24}
 </style>
 </head>
 <body>
@@ -158,6 +164,7 @@
 
 <div class="controls">
   <div class="sw"><span class="si">🔍</span><input type="text" id="search" placeholder="Buscar token..." oninput="render()"></div>
+  <button class="t" id="favFilterBtn" onclick="toggleFavFilter()">⭐ Favoritos</button>
   <div class="sep"></div>
   <div class="cl">COLUNAS:</div>
   <div class="tg" id="colTg"></div>
@@ -251,6 +258,29 @@ let sortDir    = 'desc';
 let allData    = [];
 let filteredData = [];
 let advFilters = { volumeOp:'', volumeVal:'', fundingOp:'', fundingVal:'', oiDir:'', lsrDir:'' };
+let favorites = JSON.parse(localStorage.getItem('perpFavorites')||'[]');
+let showFavOnly = false;
+
+function saveFavorites(){ localStorage.setItem('perpFavorites', JSON.stringify(favorites)); }
+
+function toggleFav(sym, e){
+  e.stopPropagation();
+  if(favorites.includes(sym)){
+    favorites = favorites.filter(s=>s!==sym);
+  } else {
+    favorites.push(sym);
+  }
+  saveFavorites();
+  render();
+}
+
+function toggleFavFilter(){
+  showFavOnly = !showFavOnly;
+  const btn = document.getElementById('favFilterBtn');
+  btn.classList.toggle('fav-on', showFavOnly);
+  btn.textContent = showFavOnly ? '⭐ Favoritos ✕' : '⭐ Favoritos';
+  render();
+}
 
 function applyAdvFilters(){
   advFilters.volumeOp   = document.getElementById('fVolumeOp').value;
@@ -708,6 +738,8 @@ async function enrichVisibleTop20(){
   let list = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
 
   // Aplica filtros avançados igual ao render
+  // Filtra favoritos
+  if(showFavOnly) filteredData = filteredData.filter(d=>favorites.includes(d.symbol));
   const hasAdvFilter = advFilters.volumeOp || advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
   if(hasAdvFilter) list = list.filter(d => passAdvFilter(d));
 
@@ -772,6 +804,8 @@ function render(){
   const q=document.getElementById('search').value.trim().toUpperCase();
   filteredData = q ? allData.filter(d=>d.symbol.includes(q)) : [...allData];
   // Aplica filtros avançados
+  // Filtra favoritos
+  if(showFavOnly) filteredData = filteredData.filter(d=>favorites.includes(d.symbol));
   const hasAdvFilter = advFilters.volumeOp || advFilters.fundingOp || advFilters.oiDir || advFilters.lsrDir;
   if(hasAdvFilter) filteredData = filteredData.filter(d => passAdvFilter(d));
 
@@ -839,9 +873,13 @@ function cell(id,d){
     case 'symbol': {
       const sym = d._sym;
       const base = d.symbol;
-      // Abre a página de mercados do TradingView — lista todas as exchanges com o par
       const tvUrl = `https://www.tradingview.com/symbols/${sym}.P/markets/`;
-      return `<div class="sym"><a href="${tvUrl}" target="_blank" rel="noopener" style="text-decoration:none"><span class="base">${base}</span> <span style="font-size:9px;color:var(--muted);opacity:.7">↗</span></a><span class="q">/USDT</span></div>`;
+      const isFav = favorites.includes(base);
+      return `<div class="sym">
+        <button class="fav-btn ${isFav?'on':''}" onclick="toggleFav('${base}',event)" title="${isFav?'Remover dos favoritos':'Adicionar aos favoritos'}">★</button>
+        <a href="${tvUrl}" target="_blank" rel="noopener" style="text-decoration:none"><span class="base">${base}</span> <span style="font-size:9px;color:var(--muted);opacity:.7">↗</span></a>
+        <span class="q">/USDT</span>
+      </div>`;
     }
 
     case 'price':  return `<span class="num">${fmtP(d.price)}</span>`;
@@ -1023,14 +1061,151 @@ buildColToggles();
 buildIVToggles();
 loadData();
 
-// Funding: atualiza a cada 5s silenciosamente
-setInterval(silentUpdateFunding, 5000);
+// ── WEBSOCKETS ────────────────────────────────────────────────────
+
+let wsBinance = null;
+let wsBybit   = null;
+let wsBitget  = null;
+let wsReconnectTimer = null;
+
+function startWebSockets(){
+  startBinanceWS();
+  startBybitWS();
+  startBitgetWS();
+}
+
+// ── Binance WebSocket: preço + volume + trades + funding ──────────
+function startBinanceWS(){
+  if(wsBinance) wsBinance.close();
+  // !miniTicker@arr → todos os tickers em tempo real
+  wsBinance = new WebSocket('wss://fstream.binance.com/ws/!miniTicker@arr');
+  
+  wsBinance.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if(!Array.isArray(data)) return;
+    let changed = false;
+    for(const t of data){
+      if(!t.s || !t.s.endsWith('USDT')) continue;
+      const d = allData.find(x=>x._sym===t.s);
+      if(!d) continue;
+      d.price  = parseFloat(t.c); // close price
+      d.volume = parseFloat(t.q); // quote volume
+      d.trades = parseInt(t.n);   // trades count
+      changed = true;
+    }
+    if(changed) updatePriceCells();
+  };
+
+  wsBinance.onerror = () => {};
+  wsBinance.onclose = () => {
+    // Reconecta após 3s
+    setTimeout(startBinanceWS, 3000);
+  };
+}
+
+// ── Bybit WebSocket: funding rate ─────────────────────────────────
+function startBybitWS(){
+  if(wsBybit) wsBybit.close();
+  wsBybit = new WebSocket('wss://stream.bybit.com/v5/public/linear');
+  
+  wsBybit.onopen = () => {
+    // Subscreve tickers de todos os pares USDT
+    wsBybit.send(JSON.stringify({op:'subscribe', args:['tickers.BTCUSDT','tickers.ETHUSDT','tickers.SOLUSDT']}));
+    // Subscreve stream geral de tickers
+    wsBybit.send(JSON.stringify({op:'subscribe', args:['tickers.*']}));
+  };
+
+  wsBybit.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if(msg.topic && msg.topic.startsWith('tickers.') && msg.data){
+      const d = msg.data;
+      if(d.symbol && d.symbol.endsWith('USDT') && d.fundingRate){
+        const token = d.symbol.replace('USDT','');
+        setFunding(token, 'bybit', parseFloat(d.fundingRate)*100);
+        updateFundingCell(token);
+      }
+    }
+  };
+
+  wsBybit.onerror = () => {};
+  wsBybit.onclose = () => setTimeout(startBybitWS, 3000);
+}
+
+// ── Bitget WebSocket: funding rate ────────────────────────────────
+function startBitgetWS(){
+  if(wsBitget) wsBitget.close();
+  wsBitget = new WebSocket('wss://ws.bitget.com/v2/ws/public');
+
+  wsBitget.onopen = () => {
+    wsBitget.send(JSON.stringify({op:'subscribe', args:[{instType:'USDT-FUTURES', channel:'ticker', instId:'default'}]}));
+  };
+
+  wsBitget.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if(msg.data && Array.isArray(msg.data)){
+      for(const d of msg.data){
+        if(d.instId && d.fundingRate){
+          const token = d.instId.replace('USDT','');
+          setFunding(token, 'bitget', parseFloat(d.fundingRate)*100);
+          updateFundingCell(token);
+        }
+      }
+    }
+  };
+
+  wsBitget.onerror = () => {};
+  wsBitget.onclose = () => setTimeout(startBitgetWS, 3000);
+}
+
+// ── Atualiza células de preço/volume/trades sem reordenar ─────────
+function updatePriceCells(){
+  const rows = document.getElementById('tb').querySelectorAll('tr');
+  const cols = buildCols();
+  for(const row of rows){
+    const tds = row.querySelectorAll('td');
+    const symEl = tds[0]?.querySelector('.base');
+    if(!symEl) continue;
+    const sym = symEl.textContent;
+    const d = allData.find(x=>x.symbol===sym);
+    if(!d) continue;
+    cols.forEach((c,i)=>{
+      if(['price','volume','trades'].includes(c.id) && tds[i]){
+        tds[i].innerHTML = cell(c.id, d);
+      }
+    });
+  }
+  document.getElementById('upd').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR');
+}
+
+// ── Atualiza célula de funding de um token específico ─────────────
+function updateFundingCell(token){
+  const rows = document.getElementById('tb').querySelectorAll('tr');
+  const cols = buildCols();
+  const fundingIdx = cols.findIndex(c=>c.id==='funding');
+  if(fundingIdx<0) return;
+  for(const row of rows){
+    const tds = row.querySelectorAll('td');
+    const symEl = tds[0]?.querySelector('.base');
+    if(!symEl) continue;
+    if(symEl.textContent === token){
+      const d = allData.find(x=>x.symbol===token);
+      if(d && tds[fundingIdx]) tds[fundingIdx].innerHTML = cell('funding', d);
+      break;
+    }
+  }
+}
+
+// Inicia WebSockets após carregar dados
+setTimeout(startWebSockets, 2000);
+
+// Funding REST como fallback a cada 15s (para exchanges sem WS)
+setInterval(silentUpdateFunding, 15000);
 
 // OI/LSR: atualiza a cada 15s silenciosamente
 setInterval(silentUpdateOI, 15000);
 
-// Preço/Volume/Trades: atualiza a cada 10s silenciosamente
-setInterval(silentUpdateFull, 10000);
+// Preço REST como fallback a cada 30s (caso WS caia)
+setInterval(silentUpdateFull, 30000);
 </script>
 
 <!-- Painel de Alertas -->
